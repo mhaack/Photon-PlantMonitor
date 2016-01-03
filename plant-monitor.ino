@@ -1,6 +1,7 @@
 #include "Adafruit_Sensor.h"
 #include "Adafruit_BME280.h"
 #include "elapsedMillis.h"
+#include "CircularBuffer.h"
 
 #define SEALEVELPRESSURE_HPA (1013.25)
 
@@ -28,6 +29,7 @@ struct SoilSensor {
   int power;
 };
 SoilSensor soilSensors[3] = {{ A0, D4 }, { A1, D5 }, { A2, D6 }};
+CircularBuffer<int, 60> soilBuffer[3];
 int soil1 = 2048, soil2 = 2048, soil3 = 2048;
 
 // interval counters for measurement and post
@@ -69,17 +71,13 @@ void setup() {
 void loop() {
     // read sensor data
     if (lastMeasurement > MEASUREMENT_RATE) {
-      int bmeSensorStatus = readBMESensor();
+      int currentSensorStatus = readBMESensor();
       delay(200);
-      int soil1SensorStatus = readSoilSensor(soilSensors[0].sensor, soilSensors[0].power, soil1);
+      readSoilSensor1();
       delay(200);
-      int soil2SensorStatus = readSoilSensor(soilSensors[1].sensor, soilSensors[1].power, soil2);
+      readSoilSensor2();
       delay(200);
-      int soil3SensorStatus = readSoilSensor(soilSensors[2].sensor, soilSensors[2].power, soil3);
-
-      // calc overall sensor status
-      currentSensorStatus = (bmeSensorStatus << 6) + (soil1SensorStatus << 4) +
-        (soil2SensorStatus << 2) + soil3SensorStatus;
+      readSoilSensor3();
 
       dumpSerial();
       postToParticle("sensor");
@@ -156,8 +154,26 @@ int readBMESensor() {
   return 0; // indicate normal reading
 }
 
+void readSoilSensor1() {
+  readSoilSensor(soilSensors[0].sensor, soilSensors[0].power, soil1);
+  soilBuffer[0].push(soil1);
+  soil1 = (int) averageLast(10, 0);
+}
+
+void readSoilSensor2() {
+  readSoilSensor(soilSensors[1].sensor, soilSensors[1].power, soil2);
+  soilBuffer[1].push(soil2);
+  soil2 = (int) averageLast(10, 1);
+}
+
+void readSoilSensor3() {
+  readSoilSensor(soilSensors[2].sensor, soilSensors[2].power, soil3);
+  soilBuffer[2].push(soil3);
+  soil3 = (int) averageLast(10, 2);
+}
+
 // read soil sensor data
-int readSoilSensor(const int soilSensor, const int soilSensorPower, int &soilValue) {
+void readSoilSensor(const int soilSensor, const int soilSensorPower, int &soilValue) {
     digitalWrite(led, HIGH);
     digitalWrite(soilSensorPower, HIGH); //turn sensor power on
     delay(10); // give some time to settle
@@ -165,13 +181,25 @@ int readSoilSensor(const int soilSensor, const int soilSensorPower, int &soilVal
     digitalWrite(soilSensorPower, LOW); //turn sensor power off
     delay(190);
     digitalWrite(led, LOW);
+}
 
-    if (soilValue < SOIL_THRESHOLD_LOW) {
-      return 1; // indicate soil is to low
-    } else if (soilValue > SOIL_THRESHOLD_HIGH) {
-      return 2; // indicate soil is to high
-    }
-    return 0; // indicate normal reading
+float averageLast(uint16_t numElements, byte bufferId) {
+	if( numElements > soilBuffer[bufferId].size()) {
+		numElements = soilBuffer[bufferId].size();
+	}
+  //Add up all the elements
+  float accumulator = 0;
+  int8_t i;
+  for( i = 0; i < numElements; i++ ) {
+    accumulator += soilBuffer[bufferId].get( i );
+  }
+  //Divide by number of elements
+  if( numElements != 0 ) {
+    accumulator /= numElements;
+  } else {
+	  accumulator = 0;
+  }
+  return accumulator;
 }
 
 void dumpSerial() {
