@@ -29,7 +29,7 @@ struct SoilSensor {
   int power;
 };
 SoilSensor soilSensors[3] = {{ A0, D4 }, { A1, D5 }, { A2, D6 }};
-CircularBuffer<int, 60> soilBuffer[3];
+CircularBuffer<int, 15> soilBuffer[3];
 int soil1 = 2048, soil2 = 2048, soil3 = 2048;
 
 // interval counters for measurement and post
@@ -157,32 +157,33 @@ int readBMESensor() {
 void readSoilSensor1() {
   readSoilSensor(soilSensors[0].sensor, soilSensors[0].power, soil1);
   soilBuffer[0].push(soil1);
-  soil1 = (int) averageLast(10, 0);
+  //soil1 = (int) averageLast(10, 0);
 }
 
 void readSoilSensor2() {
   readSoilSensor(soilSensors[1].sensor, soilSensors[1].power, soil2);
   soilBuffer[1].push(soil2);
-  soil2 = (int) averageLast(10, 1);
+  //soil2 = (int) averageLast(10, 1);
 }
 
 void readSoilSensor3() {
   readSoilSensor(soilSensors[2].sensor, soilSensors[2].power, soil3);
   soilBuffer[2].push(soil3);
-  soil3 = (int) averageLast(10, 2);
+  //soil3 = (int) averageLast(10, 2);
 }
 
 // read soil sensor data
 void readSoilSensor(const int soilSensor, const int soilSensorPower, int &soilValue) {
     digitalWrite(led, HIGH);
     digitalWrite(soilSensorPower, HIGH); //turn sensor power on
-    delay(10); // give some time to settle
+    delay(100); // give some time to settle
     soilValue = analogRead(soilSensor);
     digitalWrite(soilSensorPower, LOW); //turn sensor power off
-    delay(190);
+    delay(100);
     digitalWrite(led, LOW);
 }
 
+/*
 float averageLast(uint16_t numElements, byte bufferId) {
 	if( numElements > soilBuffer[bufferId].size()) {
 		numElements = soilBuffer[bufferId].size();
@@ -201,6 +202,7 @@ float averageLast(uint16_t numElements, byte bufferId) {
   }
   return accumulator;
 }
+*/
 
 void dumpSerial() {
   Serial.print("Temperature = ");
