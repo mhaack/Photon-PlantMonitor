@@ -22,8 +22,7 @@ double humidity = 0;
 const double TEMPERATURE_THRESHOLD_LOW = 0; // used for alerts if temp is blow this value
 
 // moisture sensor
-const int SOIL_THRESHOLD_LOW = 500;
-const int SOIL_THRESHOLD_HIGH = 3500;
+const int SOIL_THRESHOLD_LOW = 3150;
 struct SoilSensor {
   int sensor;
   int power;
