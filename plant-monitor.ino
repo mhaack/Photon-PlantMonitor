@@ -180,28 +180,11 @@ void readSoilSensor(const int soilSensor, const int soilSensorPower, int &soilVa
 }
 
 void dumpSerial() {
-  Serial.print("Temperature = ");
-  Serial.print(temperature);
-  Serial.println(" *C");
-
-  Serial.print("Pressure = ");
-  Serial.print(pressure);
-  Serial.println(" hPa");
-
-  Serial.print("Approx. Altitude = ");
-  Serial.print(altitude);
-  Serial.println(" m");
-
-  Serial.print("Humidity = ");
-  Serial.print(humidity);
-  Serial.println(" %");
-
-  Serial.print("Soil 1 = ");
-  Serial.println(soil1);
-
-  Serial.print("Soil 2 = ");
-  Serial.println(soil2);
-
-  Serial.print("Soil 3 = ");
-  Serial.println(soil3);
+  Serial.printlnf("Temperature = %.2f °C", temperature);
+  Serial.printlnf("Pressure = %.2f hPa", pressure);
+  Serial.printlnf("Approx. Altitude = %.2f m", altitude);
+  Serial.printlnf("Humidity = %.2f %%", humidity);
+  Serial.printlnf("Soil 1 = %d", soil1);
+  Serial.printlnf("Soil 2 = %d", soil2);
+  Serial.printlnf("Soil 3 = %d", soil3);
 }
