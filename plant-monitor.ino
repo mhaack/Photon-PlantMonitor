@@ -16,13 +16,15 @@ char eventString[10];
 // BME280 sensor
 Adafruit_BME280 bme;
 double temperature = 0;
+double temperatureOffset = 0;
 double pressure = 0;
 double altitude = 0;
 double humidity = 0;
 const double TEMPERATURE_THRESHOLD_LOW = 0; // used for alerts if temp is blow this value
+int setTemperatureOffset(String command); // function to configure the temperate offset
 
 // moisture sensor
-const int SOIL_THRESHOLD_LOW = 3150;
+int soilLowThreshold = 3150;
 struct SoilSensor {
   int sensor;
   int power;
@@ -30,6 +32,7 @@ struct SoilSensor {
 SoilSensor soilSensors[3] = {{ A0, D4 }, { A1, D5 }, { A2, D6 }};
 CircularBuffer<int, 15> soilBuffer[3];
 int soil1 = 2048, soil2 = 2048, soil3 = 2048;
+int setSoilThreshold(String command); // function to configure the low threshold for soil alerts
 
 // interval counters for measurement and post
 const unsigned int MEASUREMENT_RATE = 60000; // read sensor data every 60 sec
@@ -57,7 +60,7 @@ void setup() {
     while (1);
   }
 
-  // declare Particle cloud variables
+  // declare Particle cloud variables & functions
   Particle.variable("temperature", &temperature, DOUBLE);
   Particle.variable("pressure", &pressure, DOUBLE);
   Particle.variable("humidity", &humidity, DOUBLE);
@@ -65,6 +68,9 @@ void setup() {
   Particle.variable("soil2", &soil2, INT);
   Particle.variable("soil3", &soil3, INT);
   Particle.variable("status", &currentSensorStatus, INT);
+
+  Particle.function("tempOffset", setTemperatureOffset);
+  Particle.function("soilLow", setSoilThreshold);
 }
 
 void loop() {
@@ -102,6 +108,21 @@ void loop() {
     lastSensorStatus = currentSensorStatus;
 }
 
+int setTemperatureOffset(String command) {
+  temperatureOffset = command.toFloat();
+  Serial.printlnf("Temperature offset set to %.2f", temperatureOffset);
+  return 1;
+}
+
+int setSoilThreshold(String command) {
+  if(command.toInt() > 0) {
+    soilLowThreshold = command.toInt();
+    Serial.printlnf("Soil low threshold set to %d", soilLowThreshold);
+    return 1;
+  }
+  else return -1;
+}
+
 // post full sensor status to Particle cloud used for Parse.com data storage
 void postToParticle(String eventName) {
   sprintf(publishString,"{\"status\": %d, \"temp\": %0.2f, \"pressure\": %0.2f, \"humidity\": %0.2f, \"soil1\": %u, \"soil2\": %u, \"soil3\": %u}",
@@ -111,13 +132,13 @@ void postToParticle(String eventName) {
 
 // post soil sensor low status to Particle cloud used for IFTTT push
 void postSoilEventToParticle() {
-  if (soil1 < SOIL_THRESHOLD_LOW) {
+  if (soil1 < soilLowThreshold) {
     Particle.publish("plant_alert", "1");
   }
-  if (soil2 < SOIL_THRESHOLD_LOW) {
+  if (soil2 < soilLowThreshold) {
     Particle.publish("plant_alert", "2");
   }
-  if (soil3 < SOIL_THRESHOLD_LOW) {
+  if (soil3 < soilLowThreshold) {
     Particle.publish("plant_alert", "3");
   }
 }
@@ -134,7 +155,7 @@ void postBMEEventToParticle() {
 int readBMESensor() {
   double currentTemperature = 0;
   digitalWrite(led, HIGH);
-  currentTemperature = bme.readTemperature();
+  currentTemperature = bme.readTemperature() - temperatureOffset;
   pressure = bme.readPressure() / 100.0F;
   altitude = bme.readAltitude(SEALEVELPRESSURE_HPA);
   humidity = bme.readHumidity();
