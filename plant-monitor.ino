@@ -156,19 +156,16 @@ int readBMESensor() {
 void readSoilSensor1() {
   readSoilSensor(soilSensors[0].sensor, soilSensors[0].power, soil1);
   soilBuffer[0].push(soil1);
-  //soil1 = (int) averageLast(10, 0);
 }
 
 void readSoilSensor2() {
   readSoilSensor(soilSensors[1].sensor, soilSensors[1].power, soil2);
   soilBuffer[1].push(soil2);
-  //soil2 = (int) averageLast(10, 1);
 }
 
 void readSoilSensor3() {
   readSoilSensor(soilSensors[2].sensor, soilSensors[2].power, soil3);
   soilBuffer[2].push(soil3);
-  //soil3 = (int) averageLast(10, 2);
 }
 
 // read soil sensor data
@@ -181,27 +178,6 @@ void readSoilSensor(const int soilSensor, const int soilSensorPower, int &soilVa
     delay(100);
     digitalWrite(led, LOW);
 }
-
-/*
-float averageLast(uint16_t numElements, byte bufferId) {
-	if( numElements > soilBuffer[bufferId].size()) {
-		numElements = soilBuffer[bufferId].size();
-	}
-  //Add up all the elements
-  float accumulator = 0;
-  int8_t i;
-  for( i = 0; i < numElements; i++ ) {
-    accumulator += soilBuffer[bufferId].get( i );
-  }
-  //Divide by number of elements
-  if( numElements != 0 ) {
-    accumulator /= numElements;
-  } else {
-	  accumulator = 0;
-  }
-  return accumulator;
-}
-*/
 
 void dumpSerial() {
   Serial.print("Temperature = ");
