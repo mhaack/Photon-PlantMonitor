@@ -32,9 +32,12 @@ SoilSensor soilSensors[3] = {{ A0, D4 }, { A1, D5 }, { A2, D6 }};
 CircularBuffer<int, 15> soilBuffer[3];
 int soil1 = 2048, soil2 = 2048, soil3 = 2048;
 
-// interval counters for measurement and post
-unsigned int measurementInterval = 60; // read sensor data every 60 sec
+// interval counters for measurement and status
+unsigned int measurementInterval = 300; // read sensor data every 5 minutes
 elapsedMillis lastMeasurement;
+const unsigned int statusInterval = 60; // post status every 60 sec
+elapsedMillis lastStatus;
+
 
 // MQTT
 void callback(char* topic, byte* payload, unsigned int length);
@@ -79,7 +82,7 @@ void loop() {
     mqttClient.loop();
 
     // read sensor data
-    if (lastMeasurement > (measurementInterval * 1000)) {
+    if (lastMeasurement > (measurementInterval * 1000UL)) {
       currentSensorStatus = readBMESensor();
       delay(200);
       readSoilSensor1();
@@ -93,6 +96,11 @@ void loop() {
       postToMQTT();
 
       lastMeasurement = 0;
+    }
+
+    if (lastStatus > (statusInterval * 1000UL)) {
+      postStatusToMQTT();
+      lastStatus = 0;
     }
 }
 
@@ -131,9 +139,6 @@ int setTemperatureInterval(String command) {
     return 1;
   }
   else return -1;
-
-
-  return 1;
 }
 
 void postToParticle() {
@@ -155,7 +160,24 @@ void postToMQTT() {
   mqttClient.publish(sensorName + "/soil2", publishString);
   sprintf(publishString, "%u", soil3);
   mqttClient.publish(sensorName + "/soil3", publishString);
+}
 
+void postStatusToMQTT() {
+  // convert RSSI to %
+  uint8_t quality;
+  int rssi = WiFi.RSSI();
+  if (rssi <= -100) {
+    quality = 0;
+  } else if (rssi >= -50) {
+    quality = 100;
+  } else {
+    quality = 2 * (rssi + 100);
+  }
+  sprintf(publishString, "%d", quality);
+  mqttClient.publish(sensorName + "/$stats/signal", publishString);
+
+  sprintf(publishString, "%d", millis() / 1000UL);
+  mqttClient.publish(sensorName + "/$stats/uptime", publishString);
 }
 
 // read BME280 sensor data
