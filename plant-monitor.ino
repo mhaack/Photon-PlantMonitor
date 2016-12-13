@@ -2,19 +2,19 @@
 #include "Adafruit_BME280.h"
 #include "elapsedMillis.h"
 #include "CircularBuffer.h"
+#include "MQTT.h"
 
 #define SEALEVELPRESSURE_HPA (1013.25)
 
 // control led
 const int led = D7;
 
-// main status
-int lastSensorStatus = 0, currentSensorStatus = 0;
 char publishString[128];
-char eventString[10];
+const String sensorName = "plantmonitor";
 
 // BME280 sensor
 Adafruit_BME280 bme;
+int currentSensorStatus = 0;
 double temperature = 0;
 double temperatureOffset = 0;
 double pressure = 0;
@@ -24,7 +24,6 @@ const double TEMPERATURE_THRESHOLD_LOW = 0; // used for alerts if temp is blow t
 int setTemperatureOffset(String command); // function to configure the temperate offset
 
 // moisture sensor
-int soilLowThreshold = 3150;
 struct SoilSensor {
   int sensor;
   int power;
@@ -32,16 +31,15 @@ struct SoilSensor {
 SoilSensor soilSensors[3] = {{ A0, D4 }, { A1, D5 }, { A2, D6 }};
 CircularBuffer<int, 15> soilBuffer[3];
 int soil1 = 2048, soil2 = 2048, soil3 = 2048;
-int setSoilThreshold(String command); // function to configure the low threshold for soil alerts
 
 // interval counters for measurement and post
-const unsigned int MEASUREMENT_RATE = 60000; // read sensor data every 60 sec
-const unsigned int POST_RATE = 60 * 60000; // post data every 60 minutes
+unsigned int measurementInterval = 60; // read sensor data every 60 sec
 elapsedMillis lastMeasurement;
-elapsedMillis lastPost;
 
-const unsigned int PUBLISHEVENT_TIME_HOUR = 15; // send events ~ 3pm
-boolean particleEventPublished = true;
+// MQTT
+void callback(char* topic, byte* payload, unsigned int length);
+byte mqttServer[] = { 192,168,1,20 };
+MQTT mqttClient(mqttServer, 1883, callback);
 
 void setup() {
   Serial.begin(9600);
@@ -70,13 +68,19 @@ void setup() {
   Particle.variable("status", &currentSensorStatus, INT);
 
   Particle.function("tempOffset", setTemperatureOffset);
-  Particle.function("soilLow", setSoilThreshold);
+  Particle.function("tempInterval", setTemperatureInterval);
 }
 
 void loop() {
+    // MQTT loop
+    if (!mqttClient.isConnected()) {
+      reconnect();
+    }
+    mqttClient.loop();
+
     // read sensor data
-    if (lastMeasurement > MEASUREMENT_RATE) {
-      int currentSensorStatus = readBMESensor();
+    if (lastMeasurement > (measurementInterval * 1000)) {
+      currentSensorStatus = readBMESensor();
       delay(200);
       readSoilSensor1();
       delay(200);
@@ -85,27 +89,33 @@ void loop() {
       readSoilSensor3();
 
       dumpSerial();
-      postToParticle("sensor");
+      postToParticle();
+      postToMQTT();
 
-      // send events to particle cloud used to trigger IFTTT push notification
-      if (Time.hour() == PUBLISHEVENT_TIME_HOUR && particleEventPublished == true) {
-        postSoilEventToParticle();
-        particleEventPublished = false; // only publish once
-      }
-      if (Time.hour() > PUBLISHEVENT_TIME_HOUR) {
-        particleEventPublished = true; // reset publish status
-      }
       lastMeasurement = 0;
     }
+}
 
-    // update cloud on timer or sensor data changes
-    if (lastPost > POST_RATE || currentSensorStatus != lastSensorStatus) {
-      postBMEEventToParticle();
-      postToParticle("parse");
-      lastPost = 0;
+// MQTT recieve message
+void callback(char* topic, byte* payload, unsigned int length) {
+    //char p[length + 1];
+    //memcpy(p, payload, length);
+    //p[length] = NULL;
+    //String message(p);
+}
+
+// MQTT connect
+void reconnect() {
+  while (!mqttClient.isConnected()) {
+    Serial.print("Attempting MQTT connection...");
+    if (mqttClient.connect(sensorName)) {
+      Serial.println("connected");
+      mqttClient.subscribe("inTopic");
+    } else {
+      Serial.println("failed, try again in 5 seconds");
+      delay(5000);
     }
-
-    lastSensorStatus = currentSensorStatus;
+  }
 }
 
 int setTemperatureOffset(String command) {
@@ -114,41 +124,38 @@ int setTemperatureOffset(String command) {
   return 1;
 }
 
-int setSoilThreshold(String command) {
+int setTemperatureInterval(String command) {
   if(command.toInt() > 0) {
-    soilLowThreshold = command.toInt();
-    Serial.printlnf("Soil low threshold set to %d", soilLowThreshold);
+    measurementInterval = command.toInt();
+      Serial.printlnf("Measurement interval set to %d", measurementInterval);
     return 1;
   }
   else return -1;
+
+
+  return 1;
 }
 
-// post full sensor status to Particle cloud used for Parse.com data storage
-void postToParticle(String eventName) {
+void postToParticle() {
   sprintf(publishString,"{\"status\": %d, \"temp\": %0.2f, \"pressure\": %0.2f, \"humidity\": %0.2f, \"soil1\": %u, \"soil2\": %u, \"soil3\": %u}",
     currentSensorStatus, temperature, pressure, humidity, soil1, soil2, soil3);
-  Particle.publish(eventName, publishString);
+  Particle.publish(sensorName, publishString);
 }
 
-// post soil sensor low status to Particle cloud used for IFTTT push
-void postSoilEventToParticle() {
-  if (soil1 < soilLowThreshold) {
-    Particle.publish("plant_alert", "1");
-  }
-  if (soil2 < soilLowThreshold) {
-    Particle.publish("plant_alert", "2");
-  }
-  if (soil3 < soilLowThreshold) {
-    Particle.publish("plant_alert", "3");
-  }
-}
+void postToMQTT() {
+  sprintf(publishString, "%0.2f", temperature);
+  mqttClient.publish(sensorName + "/temperature", publishString);
+  sprintf(publishString, "%0.2f", pressure);
+  mqttClient.publish(sensorName + "/pressure", publishString);
+  sprintf(publishString, "%0.2f", humidity);
+  mqttClient.publish(sensorName + "/humidity", publishString);
+  sprintf(publishString, "%u", soil1);
+  mqttClient.publish(sensorName + "/soil1", publishString);
+  sprintf(publishString, "%u", soil2);
+  mqttClient.publish(sensorName + "/soil2", publishString);
+  sprintf(publishString, "%u", soil3);
+  mqttClient.publish(sensorName + "/soil3", publishString);
 
-// post BMP temperature sensor low status to Particle cloud used for IFTTT push
-void postBMEEventToParticle() {
-  if (temperature < TEMPERATURE_THRESHOLD_LOW) {
-    sprintf(eventString, "%0.2f °C", temperature);
-    Particle.publish("temp_alert", eventString);
-  }
 }
 
 // read BME280 sensor data
